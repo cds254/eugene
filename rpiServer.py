@@ -41,22 +41,20 @@ def transmitData(conn):
 
 # Fucntion for serial communication with teensy
 def serialHandler():
-#	s = serial.Serial('/dev/tty.usbserial', 9600)
+	s = serial.Serial('/dev/ttyACM0', 9600)
 
 	while 1:
-		#if s.inWaiting() > 0:					# If there is stuff to be read, read it:
-		if select.select([sys.stdin,],[],[],0.0)[0]:
+		if s.inWaiting() > 0:					# If there is stuff to be read, read it:
 			readLock.acquire()
-#			serialRead.append(s.readline())			# Place it in the que for the transmitData thread.
-			serialRead.append(sys.stdin.readline())
+			serialRead.append(s.readline())			# Place it in the que for the transmitData thread.
 			readLock.release()
 
 		if len(serialWrite) > 0:				# If there is stuff to write from the receiveData thread:
 			writeLock.acquire()
-#			s.write(serialWrite.popleft().encode(ascii))	# Write it to the serial connection.
-			sys.stdout.write(serialWrite.popleft())
-			sys.stdout.flush()
+			data = serialWrite.popleft()
 			writeLock.release()
+			for i in range(0, len(data)-1):
+				s.write(data[i])			# Write it to the serial connection.
 
 		time.sleep(0)
 
