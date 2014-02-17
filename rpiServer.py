@@ -51,10 +51,10 @@ def serialHandler():
 
 		if len(serialWrite) > 0:				# If there is stuff to write from the receiveData thread:
 			writeLock.acquire()
-			data = serialWrite.popleft()
+                        data = serialWrite.popleft()
 			writeLock.release()
-			for i in range(0, len(data)-1):
-				s.write(data[i])			# Write it to the serial connection.
+                        if data != '\n':
+                            s.write(data)                               # Write it to the serial connection.
 
 		time.sleep(0)
 
