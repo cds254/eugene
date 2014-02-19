@@ -11,12 +11,19 @@ serialWrite = deque()		# Que for reading from serial.
 readLock  = threading.Lock();	# Lock for serialRead.
 writeLock = threading.Lock();	# Lock for serialWrite.
 
+loop = True			# Global thread loop flag (no need for mutex as race conditions are irrelevent)
 
 # Function for handling data recieving.
 def receiveData(conn):
 	# keep func/thread alive
-	while 1:
-		data = conn.recv(1)			# Recieve a byte at a time from the client
+	loop = True
+	while loop:
+		try:
+			data = conn.recv(1)		# Recieve a byte at a time from the client
+		except IOError:
+			print 'IOError occured, possible broken pipe?'
+			print 'Resetting and waiting for new connections.'
+			loop = False
 		if data:				# If no data, loop again
 			writeLock.acquire()
 			serialWrite.append(data)	# Otherwise, write byte to the write que
@@ -24,19 +31,31 @@ def receiveData(conn):
 
 		time.sleep(0);
 
-	#came out of loop 
+	#came out of loop
+	print 'Connection closed (receiveData).'
 	conn.close()
 
 
 # Function for data transmittion.
 def transmitData(conn):
-	while 1:
+	loop = True
+	while loop:
 		readLock.acquire()
-		if len(serialRead) > 0:				# If there is data to be sent
-			conn.sendall(serialRead.popleft())	# send it
+		if len(serialRead) > 0:					# If there is data to be sent
+			try:
+				conn.sendall(serialRead.popleft())	# send it
+			except IOError:
+				print 'IOError occured, possible broken pipe?'
+				print 'Resetting and waiting for new connections.'
+				loop = False
+
 		readLock.release()
 
 		time.sleep(0);
+
+	#came out of loop
+	print 'Connection closed (transmitData).'
+	conn.close()
 
 
 # Fucntion for serial communication with teensy
@@ -86,7 +105,7 @@ while 1:
 	# display client information
 	print 'Connected with ' + addr[0] + ':' + str(addr[1])
 
-	data = conn.recv(1024)
+	data = conn.recv(1)	# Get the send/recieve flag (1 char)
 
 	# Start thread to handle communication
 	if data == 'T':		# Host is transmitting on this socket
