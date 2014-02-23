@@ -1,16 +1,56 @@
-import sys, socket, select, threading, time, getopt
+#!/usr/bin/python2.7
+
+import sys
+import socket
+import select
+import threading
+import time
+import getopt
+import pygame
+import pygame.camera
 from thread import *
 from collections import deque
 
 
 RHOST = ''			# Get host IP from args
-PORT  = 7268			# Port used by Eugene
+CPORT = 7268			# Control port used by Eugene
+VPORT = 7269			# Video port
 
 readQue  = deque()		# Que for data read from the socket
 writeQue = deque()		# Que for data to be sent through the socket
 
 readLock  = threading.Lock();	# Lock for readQue
 writeLock = threading.Lock();	# Lock for writeQue
+
+
+def rxVideo(IP, PORT):
+	screen = pygame.display.set_mode((640,480),0)
+
+	try:
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	except socket.error, msg:
+		print "Failed to create rxSocket, error code: " + str(msg[0]) + " Error message: " + msg[1]
+		sys.exit(2)
+
+	s.bind((IP, PORT))
+	s.listen(1)
+
+	while True:
+		conn, addr = s.accept()
+
+		msg = []
+       
+       		while True:
+			d = conn.recv(4096)
+			
+			if not d: break
+			else: msg.append(d)
+	                
+		tmp = ''.join(msg)
+	        img = pygame.image.fromstring(tmp,(640,480),"RGB")
+	               
+		screen.blit(img, (0,0))
+		pygame.display.update()
 
 
 # Send data to the server.
@@ -41,6 +81,9 @@ def receiveData(conn):
 
 
 def main(argv):
+	pygame.init()
+	pygame.camera.init()
+
 	# Argument handeling - clean up sometime when it isn't 6am
 	try:
 		opts, args = getopt.getopt(argv, "i:");
@@ -51,6 +94,8 @@ def main(argv):
 	for o, a in opts:
 		if o == '-i':
 			RHOST = a
+	
+	start_new_thread(rxVideo, (RHOST, VPORT))
 
 	# Set up connections and spawn threads to do socket read and write.
 	try:
@@ -62,8 +107,8 @@ def main(argv):
 
 	print 'Sockets created.'
 
-	conn1.connect((RHOST, PORT))
-	conn2.connect((RHOST, PORT))
+	conn1.connect((RHOST, CPORT))
+	conn2.connect((RHOST, CPORT))
 
 	print 'Sockets connected to host.'
 

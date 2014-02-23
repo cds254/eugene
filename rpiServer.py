@@ -1,17 +1,58 @@
-import sys, socket, serial, threading, select, time
+#!/usr/bin/python2.7
+
+import sys
+import socket
+import serial
+import threading
+import select
+import time
+import pygame
+import pygame.camera
 from thread import *
 from collections import deque
 
 HOST = ''			# symbolic name: all available interfaces
-PORT = 7268			# PORT: RBOT - lololol
+CPORT = 7268			# Control port: RBOT - lololol
+VPORT = 7269			# Video port
 
 serialRead  = deque()		# Que for writing to serial.
 serialWrite = deque()		# Que for reading from serial.
 
-readLock  = threading.Lock();	# Lock for serialRead.
-writeLock = threading.Lock();	# Lock for serialWrite.
+readLock  = threading.Lock()	# Lock for serialRead.
+writeLock = threading.Lock()	# Lock for serialWrite.
 
+isFirstConn = True		# First connection by the client (don't want to double stream video
 loop = True			# Global thread loop flag (no need for mutex as race conditions are irrelevent)
+
+
+def txVideo(IP, PORT):
+	global isFirstConn
+	global webcam
+
+	time.sleep(1)
+
+	while isFirstConn == False:
+		try:   
+			conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		except socket.error, msg:
+			print "Failed to create txSocket, error code: " + str(msg[0]) + " Error message: " + msg[1]
+			sys.exit(2)
+		
+		try:
+			conn.connect((IP, PORT))
+		except socket.error:
+			print 'Video connection refused, exiting and waiting for client to reconnect.'
+			isFirstConn = True
+                
+		if isFirstConn == False:
+			img = webcam.get_image()
+	        	data = pygame.image.tostring(img,"RGB")
+			
+	        	conn.sendall(data)
+	        
+			conn.close()
+	        	time.sleep(0.034)
+
 
 # Function for handling data recieving.
 def receiveData(conn):
@@ -79,11 +120,19 @@ def serialHandler():
 
 
 # Main
+pygame.init()
+pygame.camera.init()
+
+#find, open and start camera
+cam_list = pygame.camera.list_cameras()
+webcam = pygame.camera.Camera(cam_list[0],(640,480))
+webcam.start()
+
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 print 'Socket created'
 
 try:
-	s.bind((HOST, PORT))
+	s.bind((HOST, CPORT))
 except socket.error, msg:
 	print 'Bind failed. Error Code: ' + str(msg[0]) + ' Message ' + msg[1]
 	sys.exit(2)
@@ -95,7 +144,7 @@ s.listen(2)
 print 'Socket now listening.'
 
 # Create a thread to handel the serial connection
-start_new_thread(serialHandler, ())
+#start_new_thread(serialHandler, ())
 
 # Keep accepting connections
 while 1:
@@ -106,6 +155,10 @@ while 1:
 	print 'Connected with ' + addr[0] + ':' + str(addr[1])
 
 	data = conn.recv(1)	# Get the send/recieve flag (1 char)
+
+	if isFirstConn:
+		start_new_thread(txVideo, (HOST, VPORT))
+		isFirstConn = False
 
 	# Start thread to handle communication
 	if data == 'T':		# Host is transmitting on this socket
