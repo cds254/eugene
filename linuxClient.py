@@ -32,7 +32,7 @@ def rxVideo(IP, PORT):
 		print "Failed to create rxSocket, error code: " + str(msg[0]) + " Error message: " + msg[1]
 		sys.exit(2)
 
-	s.bind((IP, PORT))
+	s.bind(('', PORT))
 	s.listen(1)
 
 	while True:
