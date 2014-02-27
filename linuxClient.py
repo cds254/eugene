@@ -6,8 +6,8 @@ import select
 import threading
 import time
 import getopt
+import cv2
 import pygame
-import pygame.camera
 from thread import *
 from collections import deque
 
@@ -23,8 +23,8 @@ readLock  = threading.Lock();	# Lock for readQue
 writeLock = threading.Lock();	# Lock for writeQue
 
 
-def rxVideo(IP, PORT):
-	screen = pygame.display.set_mode((640,480),0)
+def rxVideo(PORT):
+	screen = pygame.display.set_mode((320,240))
 
 	try:
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -39,16 +39,15 @@ def rxVideo(IP, PORT):
 		conn, addr = s.accept()
 
 		msg = []
-       
-       		while True:
-			d = conn.recv(4096)
-			
+
+		while True:
+			d = conn.recv(1024*1024)
 			if not d: break
 			else: msg.append(d)
-	                
+
 		tmp = ''.join(msg)
-	        img = pygame.image.fromstring(tmp,(640,480),"RGB")
-	               
+		img = pygame.image.fromstring(tmp, (320,240), "RGB")
+
 		screen.blit(img, (0,0))
 		pygame.display.update()
 
@@ -81,9 +80,6 @@ def receiveData(conn):
 
 
 def main(argv):
-	pygame.init()
-	pygame.camera.init()
-
 	# Argument handeling - clean up sometime when it isn't 6am
 	try:
 		opts, args = getopt.getopt(argv, "i:");
@@ -94,8 +90,8 @@ def main(argv):
 	for o, a in opts:
 		if o == '-i':
 			RHOST = a
-	
-	start_new_thread(rxVideo, (RHOST, VPORT))
+
+	start_new_thread(rxVideo, (VPORT,))
 
 	# Set up connections and spawn threads to do socket read and write.
 	try:

@@ -6,8 +6,8 @@ import serial
 import threading
 import select
 import time
+import cv2
 import pygame
-import pygame.camera
 from thread import *
 from collections import deque
 
@@ -27,12 +27,13 @@ loop = True			# Global thread loop flag (no need for mutex as race conditions ar
 
 def txVideo(IP, PORT):
 	global isFirstConn
-	global webcam
 
-	time.sleep(1)
+	webcam = cv2.VideoCapture(1)            # change to -1 for pi
+
+	time.sleep(1)				# Sleep for a second to wait for the client to get set up
 
 	while isFirstConn == False:
-		try:   
+		try:
 			conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		except socket.error, msg:
 			print "Failed to create txSocket, error code: " + str(msg[0]) + " Error message: " + msg[1]
@@ -40,18 +41,20 @@ def txVideo(IP, PORT):
 		
 		try:
 			conn.connect((IP, PORT))
-		except socket.error:
-			print 'Video connection refused, exiting and waiting for client to reconnect.'
+		except socket.error, e:
+			print 'ERROR: ' + str(e) + '\nWaiting for client to reconnect.'
 			isFirstConn = True
-                
+
 		if isFirstConn == False:
-			img = webcam.get_image()
-	        	data = pygame.image.tostring(img,"RGB")
-			
-	        	conn.sendall(data)
+			_, img = webcam.read()
 	        
-			conn.close()
-	        	time.sleep(0.034)
+			image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+			data = pygame.image.frombuffer(image_rgb.tostring(), image_rgb.shape[1::-1], "RGB")
+		
+			conn.sendall(pygame.image.tostring(data, "RGB"))
+
+		conn.close()
+		time.sleep(0.034)
 
 
 # Function for handling data recieving.
@@ -120,14 +123,6 @@ def serialHandler():
 
 
 # Main
-pygame.init()
-pygame.camera.init()
-
-#find, open and start camera
-cam_list = pygame.camera.list_cameras()
-webcam = pygame.camera.Camera(cam_list[0],(640,480))
-webcam.start()
-
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 print 'Socket created'
 
@@ -144,7 +139,7 @@ s.listen(2)
 print 'Socket now listening.'
 
 # Create a thread to handel the serial connection
-#start_new_thread(serialHandler, ())
+start_new_thread(serialHandler, ())
 
 # Keep accepting connections
 while 1:
