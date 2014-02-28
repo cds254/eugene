@@ -28,7 +28,7 @@ loop = True			# Global thread loop flag (no need for mutex as race conditions ar
 def txVideo(IP, PORT):
 	global isFirstConn
 
-	webcam = cv2.VideoCapture(1)            # change to -1 for pi
+	webcam = cv2.VideoCapture(-1)           # change to -1 for pi
 
 	time.sleep(1)				# Sleep for a second to wait for the client to get set up
 
@@ -139,7 +139,7 @@ s.listen(2)
 print 'Socket now listening.'
 
 # Create a thread to handel the serial connection
-start_new_thread(serialHandler, ())
+#start_new_thread(serialHandler, ())
 
 # Keep accepting connections
 while 1:
@@ -152,7 +152,7 @@ while 1:
 	data = conn.recv(1)	# Get the send/recieve flag (1 char)
 
 	if isFirstConn:
-		start_new_thread(txVideo, (HOST, VPORT))
+		start_new_thread(txVideo, (addr[0], VPORT))
 		isFirstConn = False
 
 	# Start thread to handle communication
