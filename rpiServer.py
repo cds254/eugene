@@ -6,10 +6,13 @@ import serial
 import threading
 import select
 import time
-import cv2
-import pygame
+import gi
 from thread import *
 from collections import deque
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+Gst.init(None)
 
 HOST = ''			# symbolic name: all available interfaces
 CPORT = 7268			# Control port: RBOT - lololol
@@ -26,35 +29,34 @@ loop = True			# Global thread loop flag (no need for mutex as race conditions ar
 
 
 def txVideo(IP, PORT):
-	global isFirstConn
+	# Set up the pipeline
+	pipeline  = 'v4l2src device=/dev/video0 ! video/x-raw, width=640, height=480, framerate=15/1 ! queue'
+	pipeline += ' ! videoconvert ! omxh264enc ! rtph264pay pt=96 ! udpsink host=' + IP + ' port=' + PORT
 
-	webcam = cv2.VideoCapture(-1)           # change to -1 for pi
+	camStream = Gst.parse_launch(pipeline)
 
-	time.sleep(1)				# Sleep for a second to wait for the client to get set up
+	camStream.set_state(Gst.State.PLAYING)
 
-	while isFirstConn == False:
-		try:
-			conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		except socket.error, msg:
-			print "Failed to create txSocket, error code: " + str(msg[0]) + " Error message: " + msg[1]
-			sys.exit(2)
-		
-		try:
-			conn.connect((IP, PORT))
-		except socket.error, e:
-			print 'ERROR: ' + str(e) + '\nWaiting for client to reconnect.'
-			isFirstConn = True
+	# problem with python wrapper's timed_pop_filtered not excepting GST_CLOCK_TIME_NONE
+	# fix by redefining it from -1 to max time ammount 4294967295
+	GST_CLOCK_TIME_NONE = 4294967295
 
-		if isFirstConn == False:
-			_, img = webcam.read()
-	        
-			image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-			data = pygame.image.frombuffer(image_rgb.tostring(), image_rgb.shape[1::-1], "RGB")
-		
-			conn.sendall(pygame.image.tostring(data, "RGB"))
+	# Wait until error or EOS
+	bus = camStream.get_bus()
 
-		conn.close()
-		time.sleep(0.034)
+	while True:
+	        msg = bus.timed_pop_filtered(GST_CLOCK_TIME_NONE, Gst.MessageType.ERROR | Gst.MessageType.EOS)
+	        if type(msg) != type(None):
+	                break
+
+	if msg.type == Gst.MessageType.ERROR:
+	        gerror, dbg_msg = msg.parse_error()
+	        print "Error         : ", gerror.message
+	        print "Debug details : ", dbg_msg
+
+	# Free resources
+	camStream.set_state(Gst.State.NULL)
+
 
 
 # Function for handling data recieving.
