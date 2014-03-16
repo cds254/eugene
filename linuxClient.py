@@ -13,6 +13,7 @@ import gobject
 import pygst
 import gst
 import pygame
+from pygame.locals import *
 from thread import *
 from collections import deque
 
@@ -82,30 +83,38 @@ class GTK_Main:
                         imagesink.set_xwindow_id(self.movie_window.window.xid)
 
 
-#def rxVideo(PORT):
-#	pipeline  = 'udpsrc port=5000 ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! '
-#	pipeline += 'gstrtpjitterbuffer mode=slave latency=200 drop-on-latency=true ! rtph264depay ! video/x-h264,width=640,height=480, framerate=30/1 ! '
-#	pipeline += 'ffdec_h264 ! ffmpegcolorspace ! autovideosink'
+def tankDrive(x, y):				# Idea/explination from goodrobot.com/en/2009/09/tank-drive-via-joystick-control/
+	# Compute angle in deg
+	z = math.sqrt(x*x + y*y)		# first get hypotenuse
+	
+	if z == 0:
+		z = 0.001
+	
+	rad = math.acos(abs(x)/z)		# then angle in rad
+	angle = rad*180/math.pi			# then in deg
 
-#	camStream = gst.parse_launch(pipeline)
+	# Calculate measure of turn
+	tcoeff = -1 + (angle/90) * 2
+	turn = tcoeff * abs(abs(y) - abs(x))
+	turn = round(turn*100)/100
 
-#	camStream.set_state(gst.STATE_PLAYING)
+	# Max of x or y is movement
+	move = max(abs(y), abs(x))
 
-	# Wait until error or EOS
-#	bus = camStream.get_bus()
+	# Get first and thirt quadrent
+	if (x >= 0 and y >= 0) or (x < 0 and y < 0):
+		left = move
+		right = turn
+	else:
+		right = move
+		left = turn
 
-#	while True:
-#		msg = bus.timed_pop_filtered(gst.CLOCK_TIME_NONE, gst.MESSAGE_ERROR | gst.MESSAGE_EOS)
-#		if type(msg) != type(None):
-#			break
+	# Reverse polarity
+	if y < 0:
+		left = 0 - left
+		right = 0 - right
 
-#	if msg.type == gst.MESSAGE_ERROR:
-#		gerror, dbg_msg = msg.parse_error()
-#		print "Error         : ", gerror.message
-#		print "Debug details : ", dbg_msg
-
-	# Free resources
-#	camStream.set_state(gst.STATE_NULL)
+	return (left, right)
 
 
 # Send data to the server.
@@ -134,17 +143,107 @@ def receiveData(conn):
 
 		time.sleep(0)
 
-def handleData():
+def handleJoystick():
 	global writeLock
 	global readLock
 	global writeQue
 	global readQue
+	
+	loop = True
 
-	# Read/write terminal <-> sockets
-	while 1:
-		if select.select([sys.stdin,],[],[],0.0)[0]:	# If there is input from stdin
+	LTRACK = 0
+	RTRACK = 0
+	LHORZ  = 0
+	LVERT  = 0
+	LTRIG  = 0
+	RHORZ  = 0
+	RVERT  = 0
+	RTRIG  = 0
+
+	pygame.init()
+	
+	screen = pygame.display.set_mode((320,240))
+	pygame.display.set_caption("Joystick Testing")
+
+	joystick = pygame.joystick.Joystick(0)
+	joystick.init()
+
+	clock = pygame.time.Clock()
+	
+	# Read/write joystick/terminal <-> sockets
+	while loop:
+		clock.tick(2)
+		for event in pygame.event.get():
+			if event.type == pygame.QUIT:
+				print "Quitting"
+				loop = False
+			elif event.type == JOYAXISMOTION:
+				if event.axis == 0:		# Left stick horizontal
+					LHORZ = joystick.get_axis(event.axis)
+					if LHORZ > 1:
+						LHORZ = 1
+					elif LHORZ < -1:
+						LHORZ = -1
+					elif LHORZ > (-1 * ZERO_BUFF) and LHORZ < ZERO_BUFF:
+						LHORZ = 0
+					print 'LHORZ: ' + str(LHORZ)
+				elif event.axis == 1:		# Left stick vertical
+					LVERT = joystick.get_axis(event.axis) * -1	# Gives axis backward origionally
+					if LVERT > 1:
+						LVERT = 1
+					elif LVERT < -1:
+						LVERT = -1
+					elif LVERT > (-1 * ZERO_BUFF) and LVERT < ZERO_BUFF:
+						LVERT = 0
+					print 'LVERT: ' + str(LVERT)
+				elif event.axis == 2:		# Left trigger
+					LTRIG = joystick.get_axis(event.axis)
+				elif event.axis == 3:		# Right stick horizontal
+					RHORZ = joystick.get_axis(event.axis)
+				elif event.axis == 4:		# Right stick vertical
+					RVERT = joystick.get_axis(event.axis)
+				elif event.axis == 5:		# Right triger
+					RTRIG = joystick.get_axis(event.axis)
+
+
+			elif event.type == JOYBUTTONDOWN:
+				time.sleep(0)
+			elif event.type == JOYBUTTONUP:
+				time.sleep(0)
+				
+		LTRACK, RTRACK = tankDrive(LHORZ, LVERT)
+
+		# Calculate move F/B and magnatudew
+		LPWM = LTRACK * 255
+		RPWM = RTRACK * 255
+
+		if LTRACK <= 0:
+			FLDIR = 0
+			BLDIR = 1
+		else:
+			FLDIR = 1
+			BLDIR = 0
+
+		if RTRACK <= 0:
+			FRDIR = 0
+			BRDIR = 1
+		else:
+			FRDIR = 1
+			BRDIR = 0
+			
+		oldState = state
+		state = ((FLDIR,LPWM),(BLDIR,LPWM),(FRDIR,RPWM),(BRDIR,RPWM))
+
+		if oldState != state:			# If the state has changed, push it to the socket
 			writeLock.acquire()
-			writeQue.append(sys.stdin.readline())	# Write it to the write que
+			writeQue.append(str(state[0][0]))
+			writeQue.append(str(state[0][1].zfill(3)))
+			writeQue.append(str(state[1][0]))
+			writeQue.append(str(state[1][1].zfill(3)))		
+			writeQue.append(str(state[2][0]))
+			writeQue.append(str(state[2][1].zfill(3)))
+			writeQue.append(str(state[3][0]))
+			writeQue.append(str(state[3][1].zfill(3)))
 			writeLock.release()
 
 		if len(readQue) > 0:				# If there is data to be written to stdo
@@ -188,7 +287,7 @@ def main(argv):
 
 	start_new_thread(sendData, (conn1,))
 	start_new_thread(receiveData, (conn2,))
-	start_new_thread(handleData, ())
+	start_new_thread(handleJoystick, ())
 
 	print 'Spawned threads.'
 
