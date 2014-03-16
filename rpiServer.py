@@ -106,7 +106,7 @@ def transmitData(conn):
 
 # Fucntion for serial communication with teensy
 def serialHandler():
-	s = serial.Serial('/dev/ttyACM0', 9600)
+	s = serial.Serial('/dev/ttyAMA0', 9600)
 
 	while 1:
 		if s.inWaiting() > 0:					# If there is stuff to be read, read it:
@@ -141,7 +141,7 @@ s.listen(2)
 print 'Socket now listening.'
 
 # Create a thread to handel the serial connection
-#start_new_thread(serialHandler, ())
+start_new_thread(serialHandler, ())
 
 # Keep accepting connections
 while 1:

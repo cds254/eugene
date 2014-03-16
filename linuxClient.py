@@ -2,6 +2,7 @@
 
 import sys
 import os
+import math
 import socket
 import select
 import threading
@@ -125,6 +126,7 @@ def sendData(conn):
 			writeLock.acquire()
 			conn.sendall(writeQue.popleft())
 			writeLock.release()
+			print "Wrote data to socket."
 
 		time.sleep(0)
 
@@ -151,6 +153,8 @@ def handleJoystick():
 	
 	loop = True
 
+	ZERO_BUFF = 0.2
+
 	LTRACK = 0
 	RTRACK = 0
 	LHORZ  = 0
@@ -159,6 +163,8 @@ def handleJoystick():
 	RHORZ  = 0
 	RVERT  = 0
 	RTRIG  = 0
+
+	state = (0,0)		# Random garbage to initilize var
 
 	pygame.init()
 	
@@ -172,7 +178,7 @@ def handleJoystick():
 	
 	# Read/write joystick/terminal <-> sockets
 	while loop:
-		clock.tick(2)
+		clock.tick(60)
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
 				print "Quitting"
@@ -237,14 +243,15 @@ def handleJoystick():
 		if oldState != state:			# If the state has changed, push it to the socket
 			writeLock.acquire()
 			writeQue.append(str(state[0][0]))
-			writeQue.append(str(state[0][1].zfill(3)))
+			writeQue.append(str(state[0][1]).zfill(3))
 			writeQue.append(str(state[1][0]))
-			writeQue.append(str(state[1][1].zfill(3)))		
+			writeQue.append(str(state[1][1]).zfill(3))		
 			writeQue.append(str(state[2][0]))
-			writeQue.append(str(state[2][1].zfill(3)))
+			writeQue.append(str(state[2][1]).zfill(3))
 			writeQue.append(str(state[3][0]))
-			writeQue.append(str(state[3][1].zfill(3)))
+			writeQue.append(str(state[3][1]).zfill(3))
 			writeLock.release()
+			print "Wrote data to que."
 
 		if len(readQue) > 0:				# If there is data to be written to stdo
 			readLock.acquire()
