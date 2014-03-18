@@ -70,47 +70,40 @@ int charToInt(char x) {
       return 8;
     case '9':
       return 9;
+    case '\n':
+      return -1;
   }
 }
 
-void loop() {
-  digitalWrite(LED, LOW);
-  
-  if (Serial.available() >= 16) {    // a full update is available in serial
-    digitalWrite(LED, HIGH);
 
-    tmp  = Serial.read();
-    tmp1 = Serial.read();
-    tmp2 = Serial.read();
-    tmp3 = Serial.read();
-    
-    digitalWrite(FL_DIR, tmp);
-    analogWrite(FL_PWM, charToInt(tmp1) * 100 + charToInt(tmp2) * 10 + charToInt(tmp3));
-    
-    tmp  = Serial.read();
-    tmp1 = Serial.read();
-    tmp2 = Serial.read();
-    tmp3 = Serial.read();
-    
-    digitalWrite(BL_DIR, tmp);
-    analogWrite(BL_PWM, charToInt(tmp1) * 100 + charToInt(tmp2) * 10 + charToInt(tmp3));
-    
-    tmp  = Serial.read();
-    tmp1 = Serial.read();
-    tmp2 = Serial.read();
-    tmp3 = Serial.read();
-    
-    digitalWrite(FR_DIR, tmp);
-    analogWrite(FR_PWM, charToInt(tmp1) * 100 + charToInt(tmp2) * 10 + charToInt(tmp3));
-    
-    tmp  = Serial.read();
-    tmp1 = Serial.read();
-    tmp2 = Serial.read();
-    tmp3 = Serial.read();
-    
-    digitalWrite(BR_DIR, tmp);
-    analogWrite(BR_PWM, charToInt(tmp1) * 100 + charToInt(tmp2) * 10 + charToInt(tmp3));
-    
+int* readSerial() {
+  int data[DATASIZE];
+  
+  for (int i = 0; i < DATASIZE; i++) {
+    data[i] = charToInt(Serial.read());
   }
+  
+  char junk = Serial.read();        // Clear out the new line left in serial
+  
+  return data;
+}
+
+
+void loop() {
+  
+  if (Serial.available() > 0) {    // a full update is available in serial
+    int *ctrl = readSerial();
+  
+    digitalWrite(FL_DIR, ctrl[0]);
+    analogWrite(FL_PWM, ctrl[1] * 100 + ctrl[2] * 10 + ctrl[3]);
+ 
+    digitalWrite(BL_DIR, ctrl[4]);
+    analogWrite(BL_PWM, ctrl[5] * 100 + ctrl[6] * 10 + ctrl[7]);
+    
+    digitalWrite(FR_DIR, ctrl[8]);
+    analogWrite(FR_PWM, ctrl[9] * 100 + ctrl[10] * 10 + ctrl[11]);
+    
+    digitalWrite(BR_DIR, ctrl[12]);
+    analogWrite(BR_PWM, ctrl[13] * 100 + ctrl[14] * 10 + ctrl[15]);
 }
 

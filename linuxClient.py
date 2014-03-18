@@ -22,13 +22,11 @@ gobject.threads_init()
 
 RHOST = ''			# Get host IP from args
 CPORT = 7268			# Control port used by Eugene
-VPORT = 7269			# Video port
+VPORT = 5000			# Video port
 
 readQue  = deque()		# Que for data read from the socket
-writeQue = deque()		# Que for data to be sent through the socket
 
 readLock  = threading.Lock();	# Lock for readQue
-writeLock = threading.Lock();	# Lock for writeQue
 
 
 class GTK_Main:
@@ -45,7 +43,7 @@ class GTK_Main:
                 window.show_all()
 
                 # Set up the gstreamer pipeline
-                pipeline  = 'udpsrc port=7269 ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! '
+                pipeline  = 'udpsrc port=' + str(VPORT) + ' ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! '
                 pipeline += 'gstrtpjitterbuffer mode=slave latency=200 drop-on-latency=true ! rtph264depay ! video/x-h264,width=640,height=480, framerate=30/1 ! '
                 pipeline += 'ffdec_h264 ! ffmpegcolorspace ! autovideosink'
 
@@ -118,19 +116,6 @@ def tankDrive(x, y):				# Idea/explination from goodrobot.com/en/2009/09/tank-dr
 	return (left, right)
 
 
-# Send data to the server.
-def sendData(conn):
-	conn.sendall('T')
-	while 1:
-		if len(writeQue) > 0:
-			writeLock.acquire()
-			conn.sendall(writeQue.popleft())
-			writeLock.release()
-			print "Wrote data to socket."
-
-		time.sleep(0)
-
-
 # Receive data from the server.
 def receiveData(conn):
 	conn.sendall('R')
@@ -145,7 +130,7 @@ def receiveData(conn):
 
 		time.sleep(0)
 
-def handleJoystick():
+def handleJoystick(conn):
 	global writeLock
 	global readLock
 	global writeQue
@@ -153,7 +138,8 @@ def handleJoystick():
 	
 	loop = True
 
-	ZERO_BUFF = 0.2
+	ZERO_BUFF = 0.25
+	STALL_SPEED = 30
 
 	LTRACK = 0
 	RTRACK = 0
@@ -165,6 +151,8 @@ def handleJoystick():
 	RTRIG  = 0
 
 	state = (0,0)		# Random garbage to initilize var
+	
+	conn.sendall('T')	# Let the server know we are transmitting data on this connection.
 
 	pygame.init()
 	
@@ -220,8 +208,13 @@ def handleJoystick():
 		LTRACK, RTRACK = tankDrive(LHORZ, LVERT)
 
 		# Calculate move F/B and magnatudew
-		LPWM = LTRACK * 255
-		RPWM = RTRACK * 255
+		LPWM = int(LTRACK * 255)
+		RPWM = int(RTRACK * 255)
+
+		if LPWM < STALL_SPEED:
+			LPWM = 0;
+		if RPWM < STALL_SPEED:
+			RPWM = 0;
 
 		if LTRACK <= 0:
 			FLDIR = 0
@@ -238,25 +231,16 @@ def handleJoystick():
 			BRDIR = 0
 			
 		oldState = state
-		state = ((FLDIR,LPWM),(BLDIR,LPWM),(FRDIR,RPWM),(BRDIR,RPWM))
+		state = str(FLDIR) + str(LPWM).zfill(3) + str(BLDIR) + str(LPWM).zfill(3) + str(FRDIR) + str(RPWM).zfill(3) + str(BRDIR) + str(RPWM).zfill(3) + '\n'
 
 		if oldState != state:			# If the state has changed, push it to the socket
-			writeLock.acquire()
-			writeQue.append(str(state[0][0]))
-			writeQue.append(str(state[0][1]).zfill(3))
-			writeQue.append(str(state[1][0]))
-			writeQue.append(str(state[1][1]).zfill(3))		
-			writeQue.append(str(state[2][0]))
-			writeQue.append(str(state[2][1]).zfill(3))
-			writeQue.append(str(state[3][0]))
-			writeQue.append(str(state[3][1]).zfill(3))
-			writeLock.release()
-			print "Wrote data to que."
+			sys.stderr.write(str(state) + '\n')
+			conn.sendall(state)
 
 		if len(readQue) > 0:				# If there is data to be written to stdo
 			readLock.acquire()
-			sys.stdout.write(readQue.popleft())	# Write it to stdout
-			sys.stdout.flush()
+			sys.stderr.write(readQue.popleft())	# Write it to stdout
+			sys.stderr.flush()
 			readLock.release()
 
 		time.sleep(0)
@@ -274,9 +258,6 @@ def main(argv):
 		if o == '-i':
 			RHOST = a
 
-#	start_new_thread(rxVideo, (VPORT,))
-	print 'Started video thread.'
-
 	# Set up connections and spawn threads to do socket read and write.
 	try:
 		conn1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -292,9 +273,8 @@ def main(argv):
 
 	print 'Sockets connected to host.'
 
-	start_new_thread(sendData, (conn1,))
+	start_new_thread(handleJoystick, (conn1,))
 	start_new_thread(receiveData, (conn2,))
-	start_new_thread(handleJoystick, ())
 
 	print 'Spawned threads.'
 
