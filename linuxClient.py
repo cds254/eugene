@@ -82,7 +82,7 @@ class GTK_Main:
                         imagesink.set_xwindow_id(self.movie_window.window.xid)
 
 
-def tankDrive(x, y):				# Idea/explination from goodrobot.com/en/2009/09/tank-drive-via-joystick-control/
+def tankDrive(x, y):
 	# Compute angle in deg
 	z = math.sqrt(x*x + y*y)		# first get hypotenuse
 	
@@ -102,11 +102,11 @@ def tankDrive(x, y):				# Idea/explination from goodrobot.com/en/2009/09/tank-dr
 
 	# Get first and thirt quadrent
 	if (x >= 0 and y >= 0) or (x < 0 and y < 0):
-		left = move
-		right = turn
-	else:
 		right = move
 		left = turn
+	else:
+		left = move
+		right = turn
 
 	# Reverse polarity
 	if y < 0:
@@ -138,17 +138,17 @@ def handleJoystick(conn):
 	
 	loop = True
 
-	ZERO_BUFF = 0.25
+	ZERO_BUFF = 0.3
 	STALL_SPEED = 30
 
-	LTRACK = 0
-	RTRACK = 0
-	LHORZ  = 0
-	LVERT  = 0
-	LTRIG  = 0
-	RHORZ  = 0
-	RVERT  = 0
-	RTRIG  = 0
+	LTRACK = 0.0
+	RTRACK = 0.0
+	LHORZ  = 0.0
+	LVERT  = 0.0
+	LTRIG  = 0.0
+	RHORZ  = 0.0
+	RVERT  = 0.0
+	RTRIG  = 0.0
 
 	state = (0,0)		# Random garbage to initilize var
 	
@@ -163,7 +163,7 @@ def handleJoystick(conn):
 	joystick.init()
 
 	clock = pygame.time.Clock()
-	
+			
 	# Read/write joystick/terminal <-> sockets
 	while loop:
 		clock.tick(60)
@@ -174,22 +174,8 @@ def handleJoystick(conn):
 			elif event.type == JOYAXISMOTION:
 				if event.axis == 0:		# Left stick horizontal
 					LHORZ = joystick.get_axis(event.axis)
-					if LHORZ > 1:
-						LHORZ = 1
-					elif LHORZ < -1:
-						LHORZ = -1
-					elif LHORZ > (-1 * ZERO_BUFF) and LHORZ < ZERO_BUFF:
-						LHORZ = 0
-					print 'LHORZ: ' + str(LHORZ)
 				elif event.axis == 1:		# Left stick vertical
-					LVERT = joystick.get_axis(event.axis) * -1	# Gives axis backward origionally
-					if LVERT > 1:
-						LVERT = 1
-					elif LVERT < -1:
-						LVERT = -1
-					elif LVERT > (-1 * ZERO_BUFF) and LVERT < ZERO_BUFF:
-						LVERT = 0
-					print 'LVERT: ' + str(LVERT)
+					LVERT = joystick.get_axis(event.axis) * -1	# Gives axis backwords origionally
 				elif event.axis == 2:		# Left trigger
 					LTRIG = joystick.get_axis(event.axis)
 				elif event.axis == 3:		# Right stick horizontal
@@ -204,37 +190,66 @@ def handleJoystick(conn):
 				time.sleep(0)
 			elif event.type == JOYBUTTONUP:
 				time.sleep(0)
+		
+		if LHORZ > 1:
+			LHORZ = 1.0
+		elif LHORZ < -1:
+			LHORZ = -1.0
 				
-		LTRACK, RTRACK = tankDrive(LHORZ, LVERT)
+		if LVERT > 1:
+			LVERT = 1.0
+		elif LVERT < -1:
+			LVERT = -1.0
+	
 
-		# Calculate move F/B and magnatudew
+		if abs(LHORZ) < ZERO_BUFF and abs(LVERT) < ZERO_BUFF:
+			LHORZ = LVERT = 0.0
+
+
+		LTRACK, RTRACK = tankDrive(LHORZ, LVERT)
+		
+		expo = 1.8
+		if LTRACK < 0:
+			LTRACK = (abs(LTRACK) ** expo) * -1			# exponential function to make control feel smooth
+		else:
+			LTRACK = LTRACK ** expo
+
+		if RTRACK < 0:
+			RTRACK = (abs(RTRACK) ** expo) * -1
+		else:
+			RTRACK = RTRACK ** expo
+	
 		LPWM = int(LTRACK * 255)
 		RPWM = int(RTRACK * 255)
 
-		if LPWM < STALL_SPEED:
+		if abs(LPWM) < STALL_SPEED:
 			LPWM = 0;
-		if RPWM < STALL_SPEED:
+		if abs(RPWM) < STALL_SPEED:
 			RPWM = 0;
 
 		if LTRACK <= 0:
-			FLDIR = 0
-			BLDIR = 1
-		else:
 			FLDIR = 1
 			BLDIR = 0
+		else:
+			FLDIR = 0
+			BLDIR = 1
 
 		if RTRACK <= 0:
-			FRDIR = 0
-			BRDIR = 1
-		else:
 			FRDIR = 1
 			BRDIR = 0
+		else:
+			FRDIR = 0
+			BRDIR = 1
+
+		LPWM = abs(LPWM)
+		RPWM = abs(RPWM)
 			
 		oldState = state
 		state = str(FLDIR) + str(LPWM).zfill(3) + str(BLDIR) + str(LPWM).zfill(3) + str(FRDIR) + str(RPWM).zfill(3) + str(BRDIR) + str(RPWM).zfill(3) + '\n'
 
-		if oldState != state:			# If the state has changed, push it to the socket
-			sys.stderr.write(str(state) + '\n')
+		if oldState != state:			# If the state has changed, push it to the socketi
+			print str(state)
+			sys.stderr.write(str(state))
 			conn.sendall(state)
 
 		if len(readQue) > 0:				# If there is data to be written to stdo
