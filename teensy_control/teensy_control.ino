@@ -139,7 +139,10 @@ void driveControl() {
 
 void clawControl() {
   CLAW.writeMicroseconds(data[0] * 1000 + data[1] * 100 + data[2] * 10 + data[3]);
-  ARM.writeMicroseconds(data[4] * 1000 + data[5] * 100 + data[6] * 10 + data[7]);
+}
+
+void armControl() {
+  ARM.writeMicroseconds(data[0] * 1000 + data[1] * 100 + data[2] * 10 + data[3]);
 }
 
 void cameraControl() {
@@ -154,15 +157,18 @@ void loop() {
         readSerial(16);
         driveControl();
         break;
-      case 1:                      // Claw and arm control
-        readSerial(8);
+      case 1:                      // Claw control
+        readSerial(4);
         clawControl();
         break;
-      case 2:                      // Front Camera
+      case 2:                      // Arm control
+        readSerial(4);
+        armControl();
+      case 3:                      // Front Camera
         readSerial(4);
         cameraControl();
         break;
-      case 3:                      // LED ON or OFF
+      case 4:                      // LED ON or OFF
         if (Serial.read() == '1') {
           digitalWrite(LED, HIGH);
         } else {

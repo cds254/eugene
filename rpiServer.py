@@ -32,12 +32,14 @@ loop = True			# Global thread loop flag (no need for mutex as race conditions ar
 
 
 def txVideo(IP):
+	time.sleep(1)
+	
 	# Set up the pipeline
-	pipeline  = 'v4l2src device=/dev/video0 ! video/x-raw, width=640, height=480, framerate=10/1 ! queue'
-	pipeline += ' ! videoconvert ! omxh264enc ! rtph264pay pt=96 ! udpsink host=' + str(IP) + ' port=' + str(VPORT)
+	pipeline  = 'v4l2src device=/dev/video1 ! image/jpeg, width=640, framerate=10/1, rate=10 ! queue '
+	pipeline += ' ! rtpjpegpay pt=96 ! udpsink host=' + str(IP) + ' port=' + str(VPORT)
 
-	pipeline2  = 'v4l2src device=/dev/video1 ! video/x-raw, width=320, height=240, framerate=10/1 ! queue'
-	pipeline2 += ' ! videoconvert ! omxh264enc ! rtph264pay pt=96 ! udpsink host=' + str(IP) + ' port=' + str(VPORT2)
+	pipeline2  = 'v4l2src device=/dev/video0 ! image/jpeg, width=320, framerate=10/1, rate=10 ! queue '
+	pipeline2 += ' ! rtpjpegpay pt=96 ! udpsink host=' + str(IP) + ' port=' + str(VPORT2)
 	
 	frontCamStream = Gst.parse_launch(pipeline)
 	backCamStream = Gst.parse_launch(pipeline2)
@@ -94,15 +96,12 @@ def receiveData(conn):
 		except IOError:
 			print 'IOError occured, possible broken pipe?'
 			print 'Resetting and waiting for new connections.'
-			loop = False
-		if len(data) == 18:			# If no data, loop again
-			writeLock.acquire()
-			serialWrite.append(data[1:-1])	# Otherwise, write byte to the write que
-			writeLock.release()
-			print data[1:-1] + " lenght of serialWrite: " + str(len(serialWrite))
-		else:
-			print "ERROR: Malformed data: Len: " + str(len(data)) + " Data: " + data
-
+		
+		
+		writeLock.acquire()
+		serialWrite.append(data[1:-1])	# Otherwise, write byte to the write que
+		writeLock.release()
+		
 		time.sleep(0);
 
 	#came out of loop
@@ -148,7 +147,6 @@ def serialHandler():
                         data = serialWrite.popleft()
 			writeLock.release()
 			s.write(data)
-			print "wrote data to serial: " + data
 
 		time.sleep(0)
 
@@ -169,7 +167,7 @@ s.listen(2)
 print 'Socket now listening.'
 
 # Create a thread to handel the serial connection
-#start_new_thread(serialHandler, ())
+start_new_thread(serialHandler, ())
 
 # Keep accepting connections
 while 1:

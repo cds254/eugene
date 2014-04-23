@@ -20,67 +20,114 @@ from collections import deque
 
 gobject.threads_init()
 
-RHOST = ''			# Get host IP from args
-CPORT = 7268			# Control port used by Eugene
-VPORT = 5000			# Video port
+RHOST  = ''			# Get host IP from args
+CPORT  = 7268			# Control port used by Eugene
+VPORT  = 5000			# Video port
+VPORT2 = 5001			# Video port
 
 readQue  = deque()		# Que for data read from the socket
 
 readLock  = threading.Lock();	# Lock for readQue
 
-driveState = (0,0)		# Current driving state (prevents sending redundant driving data)
+driveState = (0,0)		# Current driving state (prevents sending redundant data)
+clawState  = (0,0)		# Current claw state    (prevents sending redundant data)
+armState   = (0,0)		# Current arm state     (prevents sending redundant data)
 
 class GTK_Main:
 
         def __init__(self):
-                window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-                window.set_title("Eugene")
-                window.set_default_size(640, 480)
-                window.connect("destroy", gtk.main_quit, "WM destroy")
-                vbox = gtk.VBox()
-                window.add(vbox)
-                self.movie_window = gtk.DrawingArea()
-                vbox.add(self.movie_window)
-                window.show_all()
+                self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+                
+		self.window.set_title("Eugene")
+		self.window.set_default_size(1366,768)
+		self.window.set_decorated(False)
+		self.window.modify_bg(gtk.STATE_NORMAL, gtk.gdk.color_parse("#2D2F31"))
+
+                self.window.connect("destroy", gtk.main_quit, "WM destroy")
+                
+		table = gtk.Table(12, 16, True)
+                self.window.add(table)
+                
+		self.front_cam_window = gtk.DrawingArea()
+		self.back_cam_window  = gtk.DrawingArea()
+                
+		table.attach(self.front_cam_window, 4, 12, 2, 10)
+		table.attach(self.back_cam_window, 0, 4, 0, 4)
+                
+		self.window.show_all()
 
                 # Set up the gstreamer pipeline
-                pipeline  = 'udpsrc port=' + str(VPORT) + ' ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! '
-                pipeline += 'gstrtpjitterbuffer mode=slave latency=200 drop-on-latency=true ! rtph264depay ! video/x-h264,width=640,height=480, framerate=30/1 ! '
-                pipeline += 'ffdec_h264 ! ffmpegcolorspace ! autovideosink'
+                pipeline  = 'udpsrc port=' + str(VPORT)
+                pipeline += ' ! application/x-rtp,media=video,clock-rate=90000,encoding-name=JPEG,payload=96 ! rtpjpegdepay ! decodebin ! autovideosink'
+                
+                pipeline2  = 'udpsrc port=' + str(VPORT2)
+                pipeline2 += ' ! application/x-rtp,media=video,clock-rate=90000,encoding-name=JPEG,payload=96 ! rtpjpegdepay ! decodebin ! autovideosink'
+		
+                self.front_cam = gst.parse_launch(pipeline)
+                self.back_cam = gst.parse_launch(pipeline2)
 
-                self.player = gst.parse_launch(pipeline)
+                front_bus = self.front_cam.get_bus()
+                front_bus.add_signal_watch()
+                front_bus.enable_sync_message_emission()
+                front_bus.connect("message", self.on_message_front)
+                front_bus.connect("sync-message::element", self.on_sync_message_front)
+                
+		back_bus = self.back_cam.get_bus()
+                back_bus.add_signal_watch()
+                back_bus.enable_sync_message_emission()
+                back_bus.connect("message", self.on_message_back)
+                back_bus.connect("sync-message::element", self.on_sync_message_back)
 
-                bus = self.player.get_bus()
-                bus.add_signal_watch()
-                bus.enable_sync_message_emission()
-                bus.connect("message", self.on_message)
-                bus.connect("sync-message::element", self.on_sync_message)
-
-                self.player.set_state(gst.STATE_PLAYING)
+                self.front_cam.set_state(gst.STATE_PLAYING)
+                
+		self.back_cam.set_state(gst.STATE_PLAYING)
 
 		print 'Set state to playing'
 
         def exit(self, widget, data=None):
                 gtk.main_quit()
 
-        def on_message(self, bus, message):
+        def on_message_front(self, bus, message):
                 t = message.type
                 if t == gst.MESSAGE_EOS:
-                        self.player.set_state(gst.STATE_NULL)
+                        self.front_cam.set_state(gst.STATE_NULL)
                 elif t == gst.MESSAGE_ERROR:
                         err, debug = message.parse_error()
                         print "Error: %s" % err, debug
-                        self.player.set_state(gst.STATE_NULL)
+                        self.front_cam.set_state(gst.STATE_NULL)
+        
+	def on_message_back(self, bus, message):
+                t = message.type
+                if t == gst.MESSAGE_EOS:
+                        self.back_cam.set_state(gst.STATE_NULL)
+                elif t == gst.MESSAGE_ERROR:
+                        err, debug = message.parse_error()
+                        print "Error: %s" % err, debug
+                        self.back_cam.set_state(gst.STATE_NULL)
 
-        def on_sync_message(self, bus, message):
+        def on_sync_message_front(self, bus, message):
+		if message.structure is None:
+                        return
+                message_name = message.structure.get_name()
+                if message_name == "prepare-xwindow-id":
+                        # Assign the viewport
+			print 'SF:a'
+                        message.src.set_property("force-aspect-ratio", True)
+			print 'SF:b'
+                        message.src.set_xwindow_id(self.front_cam_window.window.xid)
+			print 'SF:c'
+        
+	def on_sync_message_back(self, bus, message):
                 if message.structure is None:
                         return
                 message_name = message.structure.get_name()
                 if message_name == "prepare-xwindow-id":
                         # Assign the viewport
-                        imagesink = message.src
-                        imagesink.set_property("force-aspect-ratio", True)
-                        imagesink.set_xwindow_id(self.movie_window.window.xid)
+			print 'SB:a'
+                        message.src.set_property("force-aspect-ratio", True)
+			print 'SB:b'
+                        message.src.set_xwindow_id(self.back_cam_window.window.xid)
+			print 'SB:c'
 
 
 def tankDrive(x, y):
@@ -184,56 +231,72 @@ def handleJoystick(conn):
 				elif event.axis == 5:		# Right triger
 					RTRIG = joystick.get_axis(event.axis)
 
-			elif event.type == pygame.JOYBUTTONDOWN:
-				time.sleep(0)
-			elif event.type == pygame.JOYBUTTONUP:
-				time.sleep(0)
+		#	elif event.type == pygame.JOYBUTTONDOWN:
+		#		time.sleep(0)
+		#	elif event.type == pygame.JOYBUTTONUP:
+		#		time.sleep(0)
 		
 		toSend = ''
 
 		tmp = drive(LHORZ, LVERT)			# Calc driving stuff
-		if tmp != None:
-			toSend += '0' + tmp
+		if tmp != '':
+			toSend += '0' + str(tmp)
 		
 		tmp = claw(LTRIG, RTRIG)			# Calc claw stuff
-		if tmp != None:
-			toSend += '1' + tmp
+		if tmp != '':
+			toSend += '1' + str(int(tmp))
 		
 		tmp = arm(RVERT)				# Calc arm stuff
-		if tmp != None:
-			toSend += '2' + tmp
+		if tmp != '':
+			toSend += '2' + str(int(tmp))
 		
-		if(joystick.get_button(5) == True):		# Turn cam right
-			toSend += '3' + str(camAngle += camTurn)
-		elif(joystick.get_button(4) == True):		# Turn cam left
-			toSend += '3' + str(camAngle -= camTurn)
+		#if(joystick.get_button(5) == True):		# Turn cam right
+		#	tmp = camAngle + camTurn
+		#	toSend += '3' + str(tmp)
+		#elif(joystick.get_button(4) == True):		# Turn cam left
+		#	tmp = camAngle - camTurn
+		#	toSend += '3' + str(tmp)
 
 
-		con.sendall(toSend)
+		if toSend != '':
+			conn.sendall(toSend + '\n')
+			sys.stderr.write('Sent: ' + toSend + '\n')
 
 		time.sleep(0)
 
 def claw(LTRIG, RTRIG):
+	global clawState
+	stall_speed = 50
 	expo = 1.8
 
-	if LTRIG > -1 and RTRIG > -1:		# Both triggers -> nothing
-		return None
-	elif LTRIG > -1:			# Left trigger -> open claw
+	if LTRIG > -1:				# Left trigger -> open claw
 		scale = (LTRIG + 1) * .5		# scale trigger to 0-1
 		scale = scale ** expo			# apply expo
 		deltaClaw = scale * 500			# scale 0-1 to 0-500
+		deltaClaw *= -1
 	elif RTRIG > -1:			# Right trigger -> close claw
-		scale = (LTRIG + 1) * .5		# scale trigger to 0-1
+		scale = (RTRIG + 1) * .5		# scale trigger to 0-1
 		scale = scale ** expo			# apply expo
-		deltaClaw = -1 * (scale * 500)		# scale 0-1 to -(0-500)
+		deltaClaw = scale * 500			# scale 0-1 to 0-500
+	elif clawState != 0:			# Triggers released and motor has current
+		deltaClaw = 0				# release current on motor
 	else:					# Neither trigger -> nothing
-		return None
+		return ''
 
-	return 1500 + deltaClaw
+	if deltaClaw != clawState:
+		if abs(deltaClaw) < stall_speed:
+			deltaClaw = 0
+
+		clawState = deltaClaw
+		return 1500 + deltaClaw
+	else:
+		return ''
 
 
 def arm(RVERT):
-	ZERO_BUFF = 0.1
+	global armState
+
+	ZERO_BUFF = 0.15
 	expo = 1.8
 
 	if RVERT > 1:
@@ -244,13 +307,21 @@ def arm(RVERT):
 		RVERT = 0.0
 	
 	# -1 to 1 -> -500 to 500 with expo
-	delta = RVERT ** expo
-	delta *= 500
+	if RVERT < 0:
+		deltaArm = -1 * (abs(RVERT) ** expo)
+	else:
+		deltaArm = RVERT ** expo
+	
+	deltaArm *= 500
 
-	return 1500 + delta
+	if deltaArm != armState:
+		armState = deltaArm
+		return 1500 + deltaArm
+	else:
+		return ''
 
 
-def drive(LHORZ, LVERT)
+def drive(LHORZ, LVERT):
 	global driveState
 	
 	ZERO_BUFF = 0.3
@@ -313,14 +384,13 @@ def drive(LHORZ, LVERT)
 	RPWM = abs(RPWM)
 		
 	oldState = driveState
-	driveState = '0' + str(FLDIR) + str(LPWM).zfill(3) + str(BLDIR) + str(LPWM).zfill(3) + str(FRDIR) + str(RPWM).zfill(3) + str(BRDIR) + str(RPWM).zfill(3) + '\n'
+	driveState = str(FLDIR) + str(LPWM).zfill(3) + str(BLDIR) + str(LPWM).zfill(3) + str(FRDIR) + str(RPWM).zfill(3) + str(BRDIR) + str(RPWM).zfill(3) + '\n'
 
-	if oldState != state:				# If the state has changed, push it to the socketi
-		print str(state)
-		sys.stderr.write(str(state))
-		return state
+	if oldState != driveState:			# If the state has changed, push it to the socketi
+		print str(driveState)
+		return driveState
 
-	return None
+	return ''
 
 def main(argv):
 	# Argument handeling - clean up sometime when it isn't 6am
