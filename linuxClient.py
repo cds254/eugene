@@ -28,6 +28,7 @@ readQue  = deque()		# Que for data read from the socket
 
 readLock  = threading.Lock();	# Lock for readQue
 
+driveState = (0,0)		# Current driving state (prevents sending redundant driving data)
 
 class GTK_Main:
 
@@ -138,9 +139,6 @@ def handleJoystick(conn):
 	
 	loop = True
 
-	ZERO_BUFF = 0.3
-	STALL_SPEED = 30
-
 	LTRACK = 0.0
 	RTRACK = 0.0
 	LHORZ  = 0.0
@@ -150,7 +148,8 @@ def handleJoystick(conn):
 	RVERT  = 0.0
 	RTRIG  = 0.0
 
-	state = (0,0)		# Random garbage to initilize var
+	camAngle = 1500;	# Initial angle of camera (PWM from 0 - 3k)
+	camTurn  = 10;		# Ammount to turn every time the button is polled as down 
 	
 	conn.sendall('T')	# Let the server know we are transmitting data on this connection.
 
@@ -185,81 +184,143 @@ def handleJoystick(conn):
 				elif event.axis == 5:		# Right triger
 					RTRIG = joystick.get_axis(event.axis)
 
-
-			elif event.type == JOYBUTTONDOWN:
+			elif event.type == pygame.JOYBUTTONDOWN:
 				time.sleep(0)
-			elif event.type == JOYBUTTONUP:
+			elif event.type == pygame.JOYBUTTONUP:
 				time.sleep(0)
 		
-		if LHORZ > 1:
-			LHORZ = 1.0
-		elif LHORZ < -1:
-			LHORZ = -1.0
-				
-		if LVERT > 1:
-			LVERT = 1.0
-		elif LVERT < -1:
-			LVERT = -1.0
-	
+		toSend = ''
 
-		if abs(LHORZ) < ZERO_BUFF and abs(LVERT) < ZERO_BUFF:
-			LHORZ = LVERT = 0.0
-
-
-		LTRACK, RTRACK = tankDrive(LHORZ, LVERT)
+		tmp = drive(LHORZ, LVERT)			# Calc driving stuff
+		if tmp != None:
+			toSend += '0' + tmp
 		
-		expo = 1.8
-		if LTRACK < 0:
-			LTRACK = (abs(LTRACK) ** expo) * -1			# exponential function to make control feel smooth
-		else:
-			LTRACK = LTRACK ** expo
+		tmp = claw(LTRIG, RTRIG)			# Calc claw stuff
+		if tmp != None:
+			toSend += '1' + tmp
+		
+		tmp = arm(RVERT)				# Calc arm stuff
+		if tmp != None:
+			toSend += '2' + tmp
+		
+		if(joystick.get_button(5) == True):		# Turn cam right
+			toSend += '3' + str(camAngle += camTurn)
+		elif(joystick.get_button(4) == True):		# Turn cam left
+			toSend += '3' + str(camAngle -= camTurn)
 
-		if RTRACK < 0:
-			RTRACK = (abs(RTRACK) ** expo) * -1
-		else:
-			RTRACK = RTRACK ** expo
-	
-		LPWM = int(LTRACK * 255)
-		RPWM = int(RTRACK * 255)
 
-		if abs(LPWM) < STALL_SPEED:
-			LPWM = 0;
-		if abs(RPWM) < STALL_SPEED:
-			RPWM = 0;
-
-		if LTRACK <= 0:
-			FLDIR = 1
-			BLDIR = 0
-		else:
-			FLDIR = 0
-			BLDIR = 1
-
-		if RTRACK <= 0:
-			FRDIR = 1
-			BRDIR = 0
-		else:
-			FRDIR = 0
-			BRDIR = 1
-
-		LPWM = abs(LPWM)
-		RPWM = abs(RPWM)
-			
-		oldState = state
-		state = str(FLDIR) + str(LPWM).zfill(3) + str(BLDIR) + str(LPWM).zfill(3) + str(FRDIR) + str(RPWM).zfill(3) + str(BRDIR) + str(RPWM).zfill(3) + '\n'
-
-		if oldState != state:			# If the state has changed, push it to the socketi
-			print str(state)
-			sys.stderr.write(str(state))
-			conn.sendall(state)
-
-		if len(readQue) > 0:				# If there is data to be written to stdo
-			readLock.acquire()
-			sys.stderr.write(readQue.popleft())	# Write it to stdout
-			sys.stderr.flush()
-			readLock.release()
+		con.sendall(toSend)
 
 		time.sleep(0)
 
+def claw(LTRIG, RTRIG):
+	expo = 1.8
+
+	if LTRIG > -1 and RTRIG > -1:		# Both triggers -> nothing
+		return None
+	elif LTRIG > -1:			# Left trigger -> open claw
+		scale = (LTRIG + 1) * .5		# scale trigger to 0-1
+		scale = scale ** expo			# apply expo
+		deltaClaw = scale * 500			# scale 0-1 to 0-500
+	elif RTRIG > -1:			# Right trigger -> close claw
+		scale = (LTRIG + 1) * .5		# scale trigger to 0-1
+		scale = scale ** expo			# apply expo
+		deltaClaw = -1 * (scale * 500)		# scale 0-1 to -(0-500)
+	else:					# Neither trigger -> nothing
+		return None
+
+	return 1500 + deltaClaw
+
+
+def arm(RVERT):
+	ZERO_BUFF = 0.1
+	expo = 1.8
+
+	if RVERT > 1:
+		RVERT = 1.0
+	elif RVERT < -1:
+		RVERT = 1.0
+	elif abs(RVERT) < ZERO_BUFF:
+		RVERT = 0.0
+	
+	# -1 to 1 -> -500 to 500 with expo
+	delta = RVERT ** expo
+	delta *= 500
+
+	return 1500 + delta
+
+
+def drive(LHORZ, LVERT)
+	global driveState
+	
+	ZERO_BUFF = 0.3
+	STALL_SPEED = 30
+	
+
+	if LHORZ > 1:
+		LHORZ = 1.0
+	elif LHORZ < -1:
+		LHORZ = -1.0
+			
+	if LVERT > 1:
+		LVERT = 1.0
+	elif LVERT < -1:
+		LVERT = -1.0
+
+
+	if abs(LHORZ) < ZERO_BUFF and abs(LVERT) < ZERO_BUFF:
+		LHORZ = LVERT = 0.0
+
+	E_LHORZ = LHORZ * .75
+
+	expo_horz = 1.8
+	expo_vert = 1.8
+	if LHORZ < 0:
+		E_LHORZ = (abs(E_LHORZ) ** expo_horz) * -1		# exponential function to make control feel smooth
+	else:
+		E_LHORZ = E_LHORZ ** expo_horz
+
+	if LVERT < 0:
+		E_LVERT = (abs(LVERT) ** expo_vert) * -1
+	else:
+		E_LVERT = LVERT ** expo_vert
+
+	LTRACK, RTRACK = tankDrive(E_LHORZ, E_LVERT)
+		
+	LPWM = int(LTRACK * 255)
+	RPWM = int(RTRACK * 255)
+
+	if abs(LPWM) < STALL_SPEED:
+		LPWM = 0;
+	if abs(RPWM) < STALL_SPEED:
+		RPWM = 0;
+
+	if LTRACK <= 0:
+		FLDIR = 1
+		BLDIR = 0
+	else:
+		FLDIR = 0
+		BLDIR = 1
+
+	if RTRACK <= 0:
+		FRDIR = 1
+		BRDIR = 0
+	else:
+		FRDIR = 0
+		BRDIR = 1
+
+	LPWM = abs(LPWM)
+	RPWM = abs(RPWM)
+		
+	oldState = driveState
+	driveState = '0' + str(FLDIR) + str(LPWM).zfill(3) + str(BLDIR) + str(LPWM).zfill(3) + str(FRDIR) + str(RPWM).zfill(3) + str(BRDIR) + str(RPWM).zfill(3) + '\n'
+
+	if oldState != state:				# If the state has changed, push it to the socketi
+		print str(state)
+		sys.stderr.write(str(state))
+		return state
+
+	return None
 
 def main(argv):
 	# Argument handeling - clean up sometime when it isn't 6am
