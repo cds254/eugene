@@ -117,6 +117,8 @@ class GTK_Main:
 		self.lights.set_label("Lights On: " + str(lights))
 		self.armS   = gtk.Label("Arm Switch Active: " + str(switchActive))
 
+		return True		# Required to get the timer to call again
+
 	def exit(self, widget, data=None):
                 gtk.main_quit()
 
