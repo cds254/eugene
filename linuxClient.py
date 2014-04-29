@@ -14,6 +14,7 @@ import gobject
 import pygst
 import gst
 import pygame
+import gobject
 from pygame.locals import *
 from thread import *
 from collections import deque
@@ -25,17 +26,21 @@ CPORT  = 7268			# Control port used by Eugene
 VPORT  = 5000			# Video port
 VPORT2 = 5001			# Video port
 
-readQue  = deque()		# Que for data read from the socket
+hallData1  = ""			# Current reading from hall Effect Sensor 1
+hallData2  = ""			# Current reading from hall Effect Sensor 2
 
-readLock  = threading.Lock();	# Lock for readQue
+readLock  = threading.Lock()	# Lock for readQue
 
 driveState = (0,0)		# Current driving state (prevents sending redundant data)
 clawState  = (0,0)		# Current claw state    (prevents sending redundant data)
 armState   = (0,0)		# Current arm state     (prevents sending redundant data)
 
+lights = False
+switchActive = True
+
 class GTK_Main:
 
-        def __init__(self):
+        def __init__(self, timeout):
                 self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
                 
 		self.window.set_title("Eugene")
@@ -51,8 +56,21 @@ class GTK_Main:
 		self.front_cam_window = gtk.DrawingArea()
 		self.back_cam_window  = gtk.DrawingArea()
                 
+		self.vbox = gtk.VBox()
+
+		self.hall1  = gtk.Label("Hall Effect 1:")
+		self.hall2  = gtk.Label("Hall Effect 2:")
+		self.lights = gtk.Label("Lights On:")
+		self.armS   = gtk.Label("Arm Switch Active:")
+
+		self.vbox.pack_start(self.hall1)
+		self.vbox.pack_start(self.hall2)
+		self.vbox.pack_start(self.lights)
+		self.vbox.pack_start(self.armS)
+
 		table.attach(self.front_cam_window, 4, 12, 2, 10)
 		table.attach(self.back_cam_window, 0, 4, 0, 4)
+		table.attach(self.vbox, 13, 14, 5, 6)
                 
 		self.window.show_all()
 
@@ -83,8 +101,23 @@ class GTK_Main:
 		self.back_cam.set_state(gst.STATE_PLAYING)
 
 		print 'Set state to playing'
+	
+	        gobject.timeout_add_seconds(timeout, self.updateText)		# Call updateText every timeout seconds
 
-        def exit(self, widget, data=None):
+	def updateText():
+		global lights
+		global switchActive
+		print "updating text"
+	
+		readLock.acquire()
+		self.hall1.set_label("Hall Effect 1: " + hallData1)
+		self.hall2.set_label("Hall Effect 2: " + hallData2)
+		readLock.release()
+		
+		self.lights.set_label("Lights On: " + str(lights))
+		self.armS   = gtk.Label("Arm Switch Active: " + str(switchActive))
+
+	def exit(self, widget, data=None):
                 gtk.main_quit()
 
         def on_message_front(self, bus, message):
@@ -111,11 +144,8 @@ class GTK_Main:
                 message_name = message.structure.get_name()
                 if message_name == "prepare-xwindow-id":
                         # Assign the viewport
-			print 'SF:a'
                         message.src.set_property("force-aspect-ratio", True)
-			print 'SF:b'
                         message.src.set_xwindow_id(self.front_cam_window.window.xid)
-			print 'SF:c'
         
 	def on_sync_message_back(self, bus, message):
                 if message.structure is None:
@@ -123,11 +153,8 @@ class GTK_Main:
                 message_name = message.structure.get_name()
                 if message_name == "prepare-xwindow-id":
                         # Assign the viewport
-			print 'SB:a'
                         message.src.set_property("force-aspect-ratio", True)
-			print 'SB:b'
                         message.src.set_xwindow_id(self.back_cam_window.window.xid)
-			print 'SB:c'
 
 
 def tankDrive(x, y):
@@ -166,24 +193,31 @@ def tankDrive(x, y):
 
 # Receive data from the server.
 def receiveData(conn):
-	conn.sendall('R')
-	while 1:
-		data = conn.recv(1)
+	global hallData1
+	global hallData2
 
-		if data:
-			readLock.acquire()
-			readQue.append(data)
-			print data
-			readLock.release()
-			data = ''
+	conn.sendall('R')
+	
+	while 1:
+		data = 'a'
+		while data[-1] != '\n':
+			data += conn.recv(1)
+
+		readLock.acquire()
+		if data[1:2] == 'h1':
+			hallData1 = data[3:-1]
+		elif data[1:2] == 'h2':
+			hallData2 = data[3:-1]
+		readLock.release()
+		
+		print data[1:-1]
 
 		time.sleep(0)
 
+
 def handleJoystick(conn):
-	global writeLock
-	global readLock
-	global writeQue
-	global readQue
+	global lights
+	global switchActive
 	
 	loop = True
 
@@ -199,15 +233,21 @@ def handleJoystick(conn):
 	camAngle = 1500		# Initial angle of camera (PWM from 0 - 3k)
 	camTurn  = 10		# Ammount to turn every time the button is polled as down 
 	
-	lights = False
-
 	conn.sendall('T')	# Let the server know we are transmitting data on this connection.
+
+	# Initialize controller
+	conn.sendall('01000000010000000\n')	# Driving set to 0
+	conn.sendall('11500\n')			# Claw set to no movement
+	conn.sendall('21500\n')			# Arm set to no movement
+	conn.sendall('33\n')			# Front Camera Centered
+	conn.sendall('40\n')			# LEDs off
+	conn.sendall('61\n')			# Arm Switch On
+
+	lights = False				# Redundant but makes me feel better
+	switchActive = True			# Redundant for the same reason
 
 	pygame.init()
 	
-	#screen = pygame.display.set_mode((320,240))
-	#pygame.display.set_caption("Eugene - Joystick")
-
 	joystick = pygame.joystick.Joystick(0)
 	joystick.init()
 
@@ -238,7 +278,12 @@ def handleJoystick(conn):
 				if event.button == 0:		# Button A - reset camera position
 					conn.sendall("33\n")
 				elif event.button == 1:		# Button B - disable Arm Switch
-					conn.sendall("6\n")
+					if switchActive == True:
+						switchActive = False
+						conn.sendall("62\n")
+					else:
+						switchActive = True
+						conn.sendall("61\n")
 				elif event.button == 2:		# Button X - lights on
 					if lights:
 						conn.sendall("40\n")
@@ -378,9 +423,9 @@ def drive(LHORZ, LVERT):
 	RPWM = int(RTRACK * 255)
 
 	if abs(LPWM) < STALL_SPEED:
-		LPWM = 0;
+		LPWM = 0
 	if abs(RPWM) < STALL_SPEED:
-		RPWM = 0;
+		RPWM = 0
 
 	if LTRACK <= 0:
 		FLDIR = 1
@@ -411,7 +456,7 @@ def drive(LHORZ, LVERT):
 def main(argv):
 	# Argument handeling - clean up sometime when it isn't 6am
 	try:
-		opts, args = getopt.getopt(argv, "i:");
+		opts, args = getopt.getopt(argv, "i:")
 	except getopt.GetoptError:
 		print 'linuxClient.py -i <ip_addr>'
 		sys.exit(2)
@@ -440,7 +485,7 @@ def main(argv):
 
 	print 'Spawned threads.'
 
-	GTK_Main()
+	asdf = GTK_Main(0.1)
 	gtk.gdk.threads_init()
 	gtk.main()
 

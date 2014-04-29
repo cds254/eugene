@@ -121,17 +121,9 @@ void armSwitchEngague() {
   }
 }
 
-void armSwitchDisengague() {
-  if(deposit == false) {
-    Serial.write("deposit false, disegague\n");
-    stopArm == false;
-  }
-  Serial.write("deposit true, disengague\n");
-}
-
 void throwBlock() {
   CLAW.writeMicroseconds(1000);
-  delay(00);
+  delay(100);
   ARM.writeMicroseconds(1000);
   delay(100);
   CLAW.writeMicroseconds(1500);
@@ -142,34 +134,24 @@ void throwBlock() {
 int charToInt(char x) {
   switch(x) {
   case '0':
-    Serial.write('0');
     return 0;
   case '1':
-    Serial.write('1');
     return 1;
   case '2':
-    Serial.write('2');
     return 2;
   case '3':
-    Serial.write('3');
     return 3;
   case '4':
-    Serial.write('4');
     return 4;
   case '5':
-    Serial.write('5');
     return 5;
   case '6':
-    Serial.write('6');
     return 6;
   case '7':
-    Serial.write('7');
     return 7;
   case '8':
-    Serial.write('8');
     return 8;
   case '9':
-    Serial.write('9');
     return 9;
   case '\n':
     return -1;
@@ -256,10 +238,10 @@ void loop() {
       ARM.writeMicroseconds(2000);
       break;
     case 6:
-      if(switchActive) {
-        switchActive = false;
-      } else {
+      if(Serial.read() == '1') {
         switchActive = true;
+      } else {
+        switchActive = false;
       }
     default:
       break;
@@ -285,7 +267,6 @@ void loop() {
     }
   }
   CAMERA.writeMicroseconds(cameraAngle);
-
   if(cameraPan == 0) {
     // Write hall effect data to serial
     if(hallCount++ == 10000) {
@@ -293,14 +274,14 @@ void loop() {
       temp = analogRead(hall1);
       if (abs(temp - hallVal1) > 1) {
         Serial.write("h1");
-        Serial.print(temp);
+        Serial.println(temp);
         hallVal1 = temp;
       }
     
       temp = analogRead(hall2);
       if (abs(temp - hallVal2) > 1) {
         Serial.write("h2");
-        Serial.print(temp);
+        Serial.println(temp);
         hallVal2 = temp;
       }
     }
