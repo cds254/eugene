@@ -173,6 +173,7 @@ def receiveData(conn):
 		if data:
 			readLock.acquire()
 			readQue.append(data)
+			print data
 			readLock.release()
 			data = ''
 
@@ -195,15 +196,17 @@ def handleJoystick(conn):
 	RVERT  = 0.0
 	RTRIG  = 0.0
 
-	camAngle = 1500;	# Initial angle of camera (PWM from 0 - 3k)
-	camTurn  = 10;		# Ammount to turn every time the button is polled as down 
+	camAngle = 1500		# Initial angle of camera (PWM from 0 - 3k)
+	camTurn  = 10		# Ammount to turn every time the button is polled as down 
 	
+	lights = False
+
 	conn.sendall('T')	# Let the server know we are transmitting data on this connection.
 
 	pygame.init()
 	
-	screen = pygame.display.set_mode((320,240))
-	pygame.display.set_caption("Joystick Testing")
+	#screen = pygame.display.set_mode((320,240))
+	#pygame.display.set_caption("Eugene - Joystick")
 
 	joystick = pygame.joystick.Joystick(0)
 	joystick.init()
@@ -231,10 +234,31 @@ def handleJoystick(conn):
 				elif event.axis == 5:		# Right triger
 					RTRIG = joystick.get_axis(event.axis)
 
-		#	elif event.type == pygame.JOYBUTTONDOWN:
-		#		time.sleep(0)
-		#	elif event.type == pygame.JOYBUTTONUP:
-		#		time.sleep(0)
+			elif event.type == JOYBUTTONDOWN:
+				if event.button == 0:		# Button A - reset camera position
+					conn.sendall("33\n")
+				elif event.button == 1:		# Button B - disable Arm Switch
+					conn.sendall("6\n")
+				elif event.button == 2:		# Button X - lights on
+					if lights:
+						conn.sendall("40\n")
+						lights = False
+						print "Sent lights on"
+					else:
+						conn.sendall("41\n")
+						print "Sents lights off"
+						lights = True
+				elif event.button == 3:		# Button Y - deposit block
+					conn.sendall("5\n")
+				elif event.button == 4:		# Button LB - pan left
+					conn.sendall("32\n")
+				elif event.button == 5:		# Button RB - pan right
+					conn.sendall("31\n")
+			elif event.type == JOYBUTTONUP:
+				if event.button == 4:		# Button LB - stop pan
+					conn.sendall("30\n")
+				elif event.button == 5:		# Button RB - stop pan
+					conn.sendall("30\n")
 		
 		toSend = ''
 
@@ -250,14 +274,6 @@ def handleJoystick(conn):
 		if tmp != '':
 			toSend += '2' + str(int(tmp))
 		
-		#if(joystick.get_button(5) == True):		# Turn cam right
-		#	tmp = camAngle + camTurn
-		#	toSend += '3' + str(tmp)
-		#elif(joystick.get_button(4) == True):		# Turn cam left
-		#	tmp = camAngle - camTurn
-		#	toSend += '3' + str(tmp)
-
-
 		if toSend != '':
 			conn.sendall(toSend + '\n')
 			sys.stderr.write('Sent: ' + toSend + '\n')

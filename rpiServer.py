@@ -35,10 +35,10 @@ def txVideo(IP):
 	time.sleep(1)
 	
 	# Set up the pipeline
-	pipeline  = 'v4l2src device=/dev/video1 ! image/jpeg, width=640, framerate=10/1, rate=10 ! queue '
+	pipeline  = 'v4l2src device=/dev/video0 ! image/jpeg, width=320, framerate=15/1, rate=10 ! queue '
 	pipeline += ' ! rtpjpegpay pt=96 ! udpsink host=' + str(IP) + ' port=' + str(VPORT)
 
-	pipeline2  = 'v4l2src device=/dev/video0 ! image/jpeg, width=320, framerate=10/1, rate=10 ! queue '
+	pipeline2  = 'v4l2src device=/dev/video1 ! image/jpeg, width=160, framerate=15/1, rate=10 ! queue '
 	pipeline2 += ' ! rtpjpegpay pt=96 ! udpsink host=' + str(IP) + ' port=' + str(VPORT2)
 	
 	frontCamStream = Gst.parse_launch(pipeline)
