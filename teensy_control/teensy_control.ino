@@ -267,17 +267,17 @@ void loop() {
   }
   CAMERA.writeMicroseconds(cameraAngle);
     // Write hall effect data to serial, slowly
-  if(hallCount++ == 100000) {
+  if(hallCount++ == 50000) {
     hallCount = 0;
     temp = analogRead(hall1);
-    if (abs(temp - hallVal1) > 2) {
+    if (abs(temp - hallVal1) > 1) {
       Serial.write("h1");
       Serial.println(temp);
       hallVal1 = temp;
     }
   
     temp = analogRead(hall2);
-    if (abs(temp - hallVal2) > 2) {
+    if (abs(temp - hallVal2) > 1) {
       Serial.write("h2");
       Serial.println(temp);
       hallVal2 = temp;
