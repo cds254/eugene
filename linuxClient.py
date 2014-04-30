@@ -60,8 +60,8 @@ class GTK_Main:
 
 		self.hall1  = gtk.Label("Hall Effect 1:")
 		self.hall2  = gtk.Label("Hall Effect 2:")
-		self.lights = gtk.Label("Lights On:")
-		self.armS   = gtk.Label("Arm Switch Active:")
+		self.lights = gtk.Label("Lights:")
+		self.armS   = gtk.Label("Arm Switch:")
 
 		self.vbox.pack_start(self.hall1)
 		self.vbox.pack_start(self.hall2)
@@ -70,7 +70,7 @@ class GTK_Main:
 
 		table.attach(self.front_cam_window, 4, 12, 2, 10)
 		table.attach(self.back_cam_window, 0, 4, 0, 4)
-		table.attach(self.vbox, 13, 14, 5, 6)
+		table.attach(self.vbox, 13, 14, 4, 6)
                 
 		self.window.show_all()
 
@@ -104,18 +104,19 @@ class GTK_Main:
 	
 	        gobject.timeout_add_seconds(timeout, self.updateText)		# Call updateText every timeout seconds
 
-	def updateText():
+	def updateText(self):
+		global hallData1
+		global hallData2
 		global lights
 		global switchActive
-		print "updating text"
 	
 		readLock.acquire()
-		self.hall1.set_label("Hall Effect 1: " + hallData1)
-		self.hall2.set_label("Hall Effect 2: " + hallData2)
+		self.hall1.set_label("deltaH 1: " + hallData1)
+		self.hall2.set_label("deltaH 2: " + hallData2)
 		readLock.release()
 		
-		self.lights.set_label("Lights On: " + str(lights))
-		self.armS   = gtk.Label("Arm Switch Active: " + str(switchActive))
+		self.lights.set_label("Lights: " + str(lights))
+		self.armS   = gtk.Label("Arm Switch: " + str(switchActive))
 
 		return True		# Required to get the timer to call again
 
@@ -206,10 +207,12 @@ def receiveData(conn):
 			data += conn.recv(1)
 
 		readLock.acquire()
-		if data[1:2] == 'h1':
+		if data[1:3] == 'h1':
 			hallData1 = data[3:-1]
-		elif data[1:2] == 'h2':
+			print 'Set hallData1: ' + hallData1
+		elif data[1:3] == 'h2':
 			hallData2 = data[3:-1]
+			print 'Set hallData2: ' + hallData2
 		readLock.release()
 		
 		print data[1:-1]
@@ -236,6 +239,8 @@ def handleJoystick(conn):
 	camTurn  = 10		# Ammount to turn every time the button is polled as down 
 	
 	conn.sendall('T')	# Let the server know we are transmitting data on this connection.
+
+	time.sleep(1)
 
 	# Initialize controller
 	conn.sendall('01000000010000000\n')	# Driving set to 0
@@ -487,7 +492,7 @@ def main(argv):
 
 	print 'Spawned threads.'
 
-	asdf = GTK_Main(0.1)
+	asdf = GTK_Main(1)
 	gtk.gdk.threads_init()
 	gtk.main()
 
