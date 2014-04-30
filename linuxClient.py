@@ -35,6 +35,8 @@ driveState = (0,0)		# Current driving state (prevents sending redundant data)
 clawState  = (0,0)		# Current claw state    (prevents sending redundant data)
 armState   = (0,0)		# Current arm state     (prevents sending redundant data)
 
+hallZero = 785
+
 lights = False
 switchActive = True
 
@@ -58,10 +60,10 @@ class GTK_Main:
                 
 		self.vbox = gtk.VBox()
 
-		self.hall1  = gtk.Label("Hall Effect 1:")
-		self.hall2  = gtk.Label("Hall Effect 2:")
-		self.lights = gtk.Label("Lights:")
-		self.armS   = gtk.Label("Arm Switch:")
+		self.hall1  = gtk.Label("deltaH 1:")
+		self.hall2  = gtk.Label("deltaH 2:")
+		self.lights = gtk.Label("lights:")
+		self.armS   = gtk.Label("aSwitch:")
 
 		self.vbox.pack_start(self.hall1)
 		self.vbox.pack_start(self.hall2)
@@ -102,21 +104,33 @@ class GTK_Main:
 
 		print 'Set state to playing'
 	
-	        gobject.timeout_add_seconds(timeout, self.updateText)		# Call updateText every timeout seconds
+	        gobject.timeout_add(timeout, self.updateText)		# Call updateText every timeout seconds
 
 	def updateText(self):
 		global hallData1
 		global hallData2
 		global lights
 		global switchActive
+		global hallZero
 	
 		readLock.acquire()
-		self.hall1.set_label("deltaH 1: " + hallData1)
-		self.hall2.set_label("deltaH 2: " + hallData2)
+		#self.hall1.set_label("deltaH 1: " + str(abs(int(hallData1) - hallZero)))
+		#self.hall2.set_label("deltaH 2: " + str(abs(int(hallData2) - hallZero)))
+		
+		self.hall1.set_markup("<span foreground=\"white\">deltaH 1: " + str(abs(int(hallData1) - hallZero)) + "</span>")
+		self.hall2.set_markup("<span foreground=\"white\">deltaH 2: " + str(abs(int(hallData2) - hallZero)) + "</span>")
 		readLock.release()
 		
-		self.lights.set_label("Lights: " + str(lights))
-		self.armS   = gtk.Label("Arm Switch: " + str(switchActive))
+		#self.lights.set_label("lights: " + str(lights))
+		#self.armS.set_label("aSwitch: " + str(switchActive))
+		
+		self.lights.set_markup("<span foreground=\"white\">lights: " + str(lights) + "</span>")
+		self.armS.set_markup("<span foreground=\"white\">aSwitch: " + str(switchActive) + "</span>")
+		
+		self.hall1.set_alignment(xalign=0.0, yalign=0.5)
+		self.hall2.set_alignment(xalign=0.0, yalign=0.5)
+		self.lights.set_alignment(xalign=0.0, yalign=0.5)
+		self.armS.set_alignment(xalign=0.0, yalign=0.5)
 
 		return True		# Required to get the timer to call again
 
@@ -492,7 +506,7 @@ def main(argv):
 
 	print 'Spawned threads.'
 
-	asdf = GTK_Main(1)
+	asdf = GTK_Main(100)
 	gtk.gdk.threads_init()
 	gtk.main()
 
