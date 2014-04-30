@@ -253,7 +253,6 @@ void loop() {
     count = 0;
     if (cameraPan == 3) {
       cameraAngle = 1700;
-      cameraPan = 0;
     } 
     else if (cameraPan == 2) {
       if (cameraAngle > 800) {
@@ -267,23 +266,21 @@ void loop() {
     }
   }
   CAMERA.writeMicroseconds(cameraAngle);
-  if(cameraPan == 0) {
-    // Write hall effect data to serial
-    if(hallCount++ == 10000) {
-      hallCount = 0;
-      temp = analogRead(hall1);
-      if (abs(temp - hallVal1) > 1) {
-        Serial.write("h1");
-        Serial.println(temp);
-        hallVal1 = temp;
-      }
-    
-      temp = analogRead(hall2);
-      if (abs(temp - hallVal2) > 1) {
-        Serial.write("h2");
-        Serial.println(temp);
-        hallVal2 = temp;
-      }
+    // Write hall effect data to serial, slowly
+  if(hallCount++ == 100000) {
+    hallCount = 0;
+    temp = analogRead(hall1);
+    if (abs(temp - hallVal1) > 2) {
+      Serial.write("h1");
+      Serial.println(temp);
+      hallVal1 = temp;
+    }
+  
+    temp = analogRead(hall2);
+    if (abs(temp - hallVal2) > 2) {
+      Serial.write("h2");
+      Serial.println(temp);
+      hallVal2 = temp;
     }
   }
 }

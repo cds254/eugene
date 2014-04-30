@@ -114,15 +114,9 @@ class GTK_Main:
 		global hallZero
 	
 		readLock.acquire()
-		#self.hall1.set_label("deltaH 1: " + str(abs(int(hallData1) - hallZero)))
-		#self.hall2.set_label("deltaH 2: " + str(abs(int(hallData2) - hallZero)))
-		
 		self.hall1.set_markup("<span foreground=\"white\">deltaH 1: " + str(abs(int(hallData1) - hallZero)) + "</span>")
 		self.hall2.set_markup("<span foreground=\"white\">deltaH 2: " + str(abs(int(hallData2) - hallZero)) + "</span>")
 		readLock.release()
-		
-		#self.lights.set_label("lights: " + str(lights))
-		#self.armS.set_label("aSwitch: " + str(switchActive))
 		
 		self.lights.set_markup("<span foreground=\"white\">lights: " + str(lights) + "</span>")
 		self.armS.set_markup("<span foreground=\"white\">aSwitch: " + str(switchActive) + "</span>")
