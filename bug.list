@@ -1,2 +1,0 @@
-linuxClient:
-	(non-blocking) GTK (X11?) complaining about unkown request randomly on startup
